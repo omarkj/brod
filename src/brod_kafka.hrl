@@ -23,14 +23,15 @@
 -define(REPLICA_ID, -1).
 
 %% Api keys
--define(API_KEY_PRODUCE,        0).
--define(API_KEY_FETCH,          1).
--define(API_KEY_OFFSET,         2).
--define(API_KEY_METADATA,       3).
--define(API_KEY_LEADER_AND_ISR, 4).
--define(API_KEY_STOP_REPLICA,   5).
--define(API_KEY_OFFSET_COMMIT,  6).
--define(API_KEY_OFFSET_FETCH,   7).
+-define(API_KEY_PRODUCE,            0).
+-define(API_KEY_FETCH,              1).
+-define(API_KEY_OFFSET,             2).
+-define(API_KEY_METADATA,           3).
+-define(API_KEY_LEADER_AND_ISR,     4).
+-define(API_KEY_STOP_REPLICA,       5).
+-define(API_KEY_OFFSET_COMMIT,      6).
+-define(API_KEY_OFFSET_FETCH,       7).
+-define(API_KEY_CONSUMER_METADATA, 10).
 
 %% Compression
 -define(COMPRESS_NONE, 0).

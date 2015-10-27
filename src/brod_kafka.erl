@@ -64,15 +64,17 @@ encode(ClientId, CorrId, Request) ->
   Size = byte_size(Bin),
   <<Size:32/?INT, Bin/binary>>.
 
-api_key(#metadata_request{}) -> ?API_KEY_METADATA;
-api_key(#produce_request{})  -> ?API_KEY_PRODUCE;
-api_key(#offset_request{})   -> ?API_KEY_OFFSET;
-api_key(#fetch_request{})    -> ?API_KEY_FETCH.
+api_key(#metadata_request{})          -> ?API_KEY_METADATA;
+api_key(#produce_request{})           -> ?API_KEY_PRODUCE;
+api_key(#offset_request{})            -> ?API_KEY_OFFSET;
+api_key(#fetch_request{})             -> ?API_KEY_FETCH;
+api_key(#consumer_metadata_request{}) -> ?API_KEY_CONSUMER_METADATA.
 
-decode(?API_KEY_METADATA, Bin) -> metadata_response(Bin);
-decode(?API_KEY_PRODUCE, Bin)  -> produce_response(Bin);
-decode(?API_KEY_OFFSET, Bin)   -> offset_response(Bin);
-decode(?API_KEY_FETCH, Bin)    -> fetch_response(Bin).
+decode(?API_KEY_METADATA, Bin)          -> metadata_response(Bin);
+decode(?API_KEY_PRODUCE, Bin)           -> produce_response(Bin);
+decode(?API_KEY_OFFSET, Bin)            -> offset_response(Bin);
+decode(?API_KEY_FETCH, Bin)             -> fetch_response(Bin);
+decode(?API_KEY_CONSUMER_METADATA, Bin) -> consumer_metadata_response(Bin).
 
 is_error(X) -> brod_kafka_errors:is_error(X).
 
@@ -92,7 +94,28 @@ encode(#produce_request{} = Request)  ->
 encode(#offset_request{} = Request)  ->
   offset_request_body(Request);
 encode(#fetch_request{} = Request)  ->
-  fetch_request_body(Request).
+  fetch_request_body(Request);
+encode(#consumer_metadata_request{} = Request) ->
+  consumer_metadata_body(Request).
+
+%%%_* consumer metadata --------------------------------------------------------
+consumer_metadata_body(#consumer_metadata_request{consumer_group =
+						    ConsumerGroup}) ->
+  Size = kafka_size(ConsumerGroup),
+  <<Size:16/?INT, ConsumerGroup/binary>>.
+
+-spec consumer_metadata_response(binary()) -> #consumer_metadata_response{}.
+consumer_metadata_response(<<ErrorCode:16/?INT,
+			     NodeID:32/?INT,
+			     HostSize:16/?INT,
+			     Host:HostSize/binary,
+			     Port:32/?INT>>) ->
+  Coordinator = #broker_metadata{ node_id = NodeID
+				, host    = binary_to_list(Host)
+				, port    = Port },
+  #consumer_metadata_response{ error_code = brod_kafka_errors:decode(ErrorCode)
+			     , coordinator = Coordinator
+			     }.
 
 %%%_* metadata -----------------------------------------------------------------
 metadata_request_body(#metadata_request{topics = []}) ->

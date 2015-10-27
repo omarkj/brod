@@ -49,11 +49,11 @@ try_connect(Hosts) ->
 
 try_connect([], LastError) ->
   LastError;
-try_connect([{Host, Port} | Hosts], _) ->
+try_connect([Host | Hosts], _) ->
   %% Do not 'start_link' to avoid unexpected 'EXIT' message.
   %% Should be ok since we're using a single blocking request which
   %% monitors the process anyway.
-  case brod_sock:start(self(), Host, Port, ?DEFAULT_CLIENT_ID, []) of
+  case connect(Host) of
     {ok, Pid} -> {ok, Pid};
     Error     -> try_connect(Hosts, Error)
   end.
@@ -67,6 +67,14 @@ fetch_response_to_message_set(#fetch_response{topics = [TopicFetchData]}) ->
               , partition = Partition
               , high_wm_offset = HighWmOffset
               , messages = Messages}.
+
+-spec try_connect({string(), integer()} | #broker_metadata{}) ->
+		     {ok, pid()} | {error, term()}.
+connect({Host, Port}) ->
+  brod_sock:start(self(), Host, Port, ?DEFAULT_CLIENT_ID, []);
+connect(#broker_metadata{host = Host, port = Port}) ->
+  try_connect({Host, Port}).
+
 
 %%% Local Variables:
 %%% erlang-indent-level: 2

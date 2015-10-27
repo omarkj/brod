@@ -43,6 +43,7 @@
         'NotEnoughReplicasAfterAppendException').                           % 20
 
 -type error_code() :: atom() | integer().
+-type partition_assignment_strategy() :: roundrobin | range.
 
 -record(socket, { pid     :: pid()
                 , host    :: string()
@@ -151,6 +152,13 @@
 
 -record(fetch_response, {topics = [#topic_fetch_data{}]}).
 
+%%%_* consumer group metadata request ------------------------------------------
+-record(consumer_metadata_request, { consumer_group :: binary() }).
+
+%%%_* consumer group metadata response -----------------------------------------
+-record(consumer_metadata_response, { error_code       :: error_code()
+				    , coordinator      :: #broker_metadata{}
+				    }).
 -endif. % include brod_int.hrl
 
 %%% Local Variables:
