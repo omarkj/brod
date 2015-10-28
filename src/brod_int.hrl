@@ -194,6 +194,41 @@
 %%%_* heartbeat response -------------------------------------------------------
 -record(heartbeat_response, { error_code :: integer() }).
 
+%%%_* offset commit request ----------------------------------------------------
+-record(offset_commit_request_v0, { consumer_group_id :: string()
+				  , topic_name        :: string()
+				  , partition         :: integer()
+				  , offset            :: integer()
+				  , metadata          :: string()
+				  }).
+
+-record(offset_commit_request_v1, { consumer_group_id            :: string()
+				  , consumer_group_generation_id :: integer()
+				  , consumer_id                  :: integer()
+				  , topic_name                   :: string()
+				  , partition                    :: integer()
+				  , offset                       :: integer()
+				  , timestamp                    :: integer()
+				  , metadata                     :: string()
+				  }).
+
+-record(offset_commit_request_v2, { consumer_group_id            :: string()
+				  , consumer_group_generation_id :: integer()
+				  , consumer_id                  :: integer()
+				  , retention_time               :: integer()
+				  , topic_name                   :: string()
+				  , partition                    :: integer()
+				  , offset                       :: integer()
+				  , timestamp                    :: integer()
+				  , metadata                     :: string()
+				  }).
+
+%%%_* offset commit response ---------------------------------------------------
+-record(offset_commit_response, { topic_name :: binary()
+				, partition :: integer()
+				, error_code :: error_code()
+				}).
+
 -endif. % include brod_int.hrl
 
 %%% Local Variables:

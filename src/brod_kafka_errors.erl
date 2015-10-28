@@ -61,6 +61,7 @@ decode(18) -> ?EC_RECORD_LIST_TOO_LARGE;
 decode(19) -> ?EC_NOT_ENOUGH_REPLICAS;
 decode(20) -> ?EC_NOT_ENOUGH_REPLICAS_AFTER_APPEND;
 decode(25) -> ?EC_UNKNOWN_CONSUMER_ID;
+decode(26) -> ?EC_INVALID_SESSION_TIMEOUT;
 decode(X)  -> (true = is_integer(X)) andalso X.
 
 %% @doc Get description string of error codes.
