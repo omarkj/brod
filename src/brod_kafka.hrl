@@ -29,10 +29,10 @@
 -define(API_KEY_METADATA,           3).
 -define(API_KEY_LEADER_AND_ISR,     4).
 -define(API_KEY_STOP_REPLICA,       5).
--define(API_KEY_OFFSET_COMMIT,      6).
--define(API_KEY_OFFSET_FETCH,       7).
+-define(API_KEY_OFFSET_COMMIT,      8).
 -define(API_KEY_CONSUMER_METADATA, 10).
 -define(API_KEY_JOIN_GROUP,        11).
+-define(API_KEY_HEARTBEAT,         12).
 
 %% Compression
 -define(COMPRESS_NONE, 0).

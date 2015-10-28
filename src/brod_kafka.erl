@@ -69,14 +69,16 @@ api_key(#produce_request{})             -> ?API_KEY_PRODUCE;
 api_key(#offset_request{})              -> ?API_KEY_OFFSET;
 api_key(#fetch_request{})               -> ?API_KEY_FETCH;
 api_key(#consumer_metadata_request{})   -> ?API_KEY_CONSUMER_METADATA;
-api_key(#join_consumer_group_request{}) -> ?API_KEY_JOIN_GROUP.
+api_key(#join_consumer_group_request{}) -> ?API_KEY_JOIN_GROUP;
+api_key(#heartbeat_request{})           -> ?API_KEY_HEARTBEAT.
 
 decode(?API_KEY_METADATA, Bin)          -> metadata_response(Bin);
 decode(?API_KEY_PRODUCE, Bin)           -> produce_response(Bin);
 decode(?API_KEY_OFFSET, Bin)            -> offset_response(Bin);
 decode(?API_KEY_FETCH, Bin)             -> fetch_response(Bin);
 decode(?API_KEY_CONSUMER_METADATA, Bin) -> consumer_metadata_response(Bin);
-decode(?API_KEY_JOIN_GROUP, Bin)        -> join_group_response(Bin).
+decode(?API_KEY_JOIN_GROUP, Bin)        -> join_group_response(Bin);
+decode(?API_KEY_HEARTBEAT, Bin)         -> heartbeat_response(Bin).
 
 is_error(X) -> brod_kafka_errors:is_error(X).
 
@@ -100,7 +102,9 @@ encode(#fetch_request{} = Request)  ->
 encode(#consumer_metadata_request{} = Request) ->
   consumer_metadata_body(Request);
 encode(#join_consumer_group_request{} = Request) ->
-  join_consumer_group(Request).
+  join_consumer_group(Request);
+encode(#heartbeat_request{} = Request) ->
+  heartbeat(Request).
 
 %%%_* consumer metadata --------------------------------------------------------
 consumer_metadata_body(#consumer_metadata_request{consumer_group =
@@ -121,7 +125,7 @@ consumer_metadata_response(<<ErrorCode:16/?INT,
 			     , coordinator = Coordinator
 			     }.
 
-%%%_* join group request -------------------------------------------------------
+%%%_* join group ---------------------------------------------------------------
 join_consumer_group(#join_consumer_group_request{} = JoinConsumerGroup) ->
   ConsumerGroup = JoinConsumerGroup#join_consumer_group_request.consumer_group,
   SessionTimeout =
@@ -151,6 +155,17 @@ join_group_response(<<ErrorCode:16/?INT,
 			       , consumer_id = ConsumerId
 			       , partitions_to_own = PartitionsToTopics1
 			       }.
+
+%%%_* heartbeat ----------------------------------------------------------------
+heartbeat(#heartbeat_request{ group_id            = GroupId
+			    , group_generation_id = GGI
+			    , consumer_id         = CID
+			    }) ->
+  iolist_to_binary([kafka_string(GroupId), kafka_int32(GGI),
+		    kafka_string(CID)]).
+
+heartbeat_response(<<ErrorCode:16/?INT>>) ->
+  #heartbeat_response{ error_code = brod_kafka_errors:decode(ErrorCode) }.
 
 %%%_* metadata -----------------------------------------------------------------
 metadata_request_body(#metadata_request{topics = []}) ->
@@ -433,6 +448,9 @@ kafka_string(<<>>) ->
 kafka_string(Bin) ->
   Size = kafka_size(Bin),
   <<Size:16/?INT, Bin/binary>>.
+
+kafka_int32(Int32) ->
+  <<Int32:32/?INT>>.
 
 kafka_array(Array) ->
   Length = erlang:length(Array),

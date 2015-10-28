@@ -184,6 +184,16 @@
 				      , partitions_to_own   :: [{binary(),
 								 [integer()]}]
 				      }).
+
+%%%_* heartbeat request --------------------------------------------------------
+-record(heartbeat_request, { group_id            :: string()
+			   , group_generation_id :: integer()
+			   , consumer_id         :: string()
+			   }).
+
+%%%_* heartbeat response -------------------------------------------------------
+-record(heartbeat_response, { error_code :: integer() }).
+
 -endif. % include brod_int.hrl
 
 %%% Local Variables:
