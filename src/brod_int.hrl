@@ -36,11 +36,21 @@
 -define(EC_OFFSET_METADATA_TOO_LARGE,  'OffsetMetadataTooLarge').           % 12
 -define(EC_NETWORK_EXCEPTION,          'NetworkException').                 % 13
 %% TODO: errorCode 14, 15, 16
+-define(EC_NO_COORDINATION_FOR_CONSUMER_CODE,
+	                               'NotCoordinatorForConsumerCode').    % 16
 -define(EC_INVALID_TOPIC_EXCEPTION,    'InvalidTopicException').            % 17
 -define(EC_RECORD_LIST_TOO_LARGE,      'RecordBatchTooLargeException').     % 18
 -define(EC_NOT_ENOUGH_REPLICAS,        'NotEnoughReplicasException').       % 19
 -define(EC_NOT_ENOUGH_REPLICAS_AFTER_APPEND,
         'NotEnoughReplicasAfterAppendException').                           % 20
+-define(EC_INVALID_REQUEST_ACKS,       'InvalidRequiredAcks').              % 21
+-define(EC_ILLEGAL_GENERATION,         'IllegalGeneration').                % 22
+-define(EC_INCONSISTEND_PARTITION_ASSIGNMENT_STRATEGY,
+	'InconsistentPartitionAssignmentStrategy').                         % 23
+-define(EC_UNKOWN_PARTITION_ASSIGNMENT_STRATEGY,
+	'UnknownPartitionAssignmentStrategy').                              % 24
+-define(EC_UNKNOWN_CONSUMER_ID, 'UnknownConsumerId').                       % 25
+-define(EC_INVALID_SESSION_TIMEOUT, 'InvalidSessionTimeout').               % 26
 
 -type error_code() :: atom() | integer().
 -type partition_assignment_strategy() :: roundrobin | range.
@@ -159,6 +169,21 @@
 -record(consumer_metadata_response, { error_code       :: error_code()
 				    , coordinator      :: #broker_metadata{}
 				    }).
+
+%%%_* join consumer group request ----------------------------------------------
+-record(join_consumer_group_request, { consumer_group                :: string()
+				     , session_timeout               :: integer()
+	                             , topics                        :: [binary()]
+	                             , consumer_id                   :: string()
+				     , partition_assignment_strategy :: partition_assignment_strategy()
+				     }).
+
+-record(join_consumer_group_response, { error_code          :: error_code()
+				      , group_generation_id :: integer()
+				      , consumer_id         :: string()
+				      , partitions_to_own   :: [{binary(),
+								 [integer()]}]
+				      }).
 -endif. % include brod_int.hrl
 
 %%% Local Variables:

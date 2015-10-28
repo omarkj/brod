@@ -64,17 +64,19 @@ encode(ClientId, CorrId, Request) ->
   Size = byte_size(Bin),
   <<Size:32/?INT, Bin/binary>>.
 
-api_key(#metadata_request{})          -> ?API_KEY_METADATA;
-api_key(#produce_request{})           -> ?API_KEY_PRODUCE;
-api_key(#offset_request{})            -> ?API_KEY_OFFSET;
-api_key(#fetch_request{})             -> ?API_KEY_FETCH;
-api_key(#consumer_metadata_request{}) -> ?API_KEY_CONSUMER_METADATA.
+api_key(#metadata_request{})            -> ?API_KEY_METADATA;
+api_key(#produce_request{})             -> ?API_KEY_PRODUCE;
+api_key(#offset_request{})              -> ?API_KEY_OFFSET;
+api_key(#fetch_request{})               -> ?API_KEY_FETCH;
+api_key(#consumer_metadata_request{})   -> ?API_KEY_CONSUMER_METADATA;
+api_key(#join_consumer_group_request{}) -> ?API_KEY_JOIN_GROUP.
 
 decode(?API_KEY_METADATA, Bin)          -> metadata_response(Bin);
 decode(?API_KEY_PRODUCE, Bin)           -> produce_response(Bin);
 decode(?API_KEY_OFFSET, Bin)            -> offset_response(Bin);
 decode(?API_KEY_FETCH, Bin)             -> fetch_response(Bin);
-decode(?API_KEY_CONSUMER_METADATA, Bin) -> consumer_metadata_response(Bin).
+decode(?API_KEY_CONSUMER_METADATA, Bin) -> consumer_metadata_response(Bin);
+decode(?API_KEY_JOIN_GROUP, Bin)        -> join_group_response(Bin).
 
 is_error(X) -> brod_kafka_errors:is_error(X).
 
@@ -96,7 +98,9 @@ encode(#offset_request{} = Request)  ->
 encode(#fetch_request{} = Request)  ->
   fetch_request_body(Request);
 encode(#consumer_metadata_request{} = Request) ->
-  consumer_metadata_body(Request).
+  consumer_metadata_body(Request);
+encode(#join_consumer_group_request{} = Request) ->
+  join_consumer_group(Request).
 
 %%%_* consumer metadata --------------------------------------------------------
 consumer_metadata_body(#consumer_metadata_request{consumer_group =
@@ -116,6 +120,37 @@ consumer_metadata_response(<<ErrorCode:16/?INT,
   #consumer_metadata_response{ error_code = brod_kafka_errors:decode(ErrorCode)
 			     , coordinator = Coordinator
 			     }.
+
+%%%_* join group request -------------------------------------------------------
+join_consumer_group(#join_consumer_group_request{} = JoinConsumerGroup) ->
+  ConsumerGroup = JoinConsumerGroup#join_consumer_group_request.consumer_group,
+  SessionTimeout =
+    JoinConsumerGroup#join_consumer_group_request.session_timeout,
+  Topics = JoinConsumerGroup#join_consumer_group_request.topics,
+  ConsumerId = JoinConsumerGroup#join_consumer_group_request.consumer_id,
+  PartitionAssignmentStrategy =
+    JoinConsumerGroup#join_consumer_group_request.partition_assignment_strategy,
+  ConsumerGroup1 = kafka_string(ConsumerGroup),
+  SessionTimeout1 = kafka_timeout(SessionTimeout),
+  ConsumerId1 = kafka_string(ConsumerId),
+  PartitionAssignmentStrategy1 =
+    kafka_string(partition_strategy(PartitionAssignmentStrategy)),
+  Topics1 = kafka_array([ kafka_string(T) || T <- Topics ]),
+  iolist_to_binary([ConsumerGroup1, SessionTimeout1, Topics1, ConsumerId1, 
+		    PartitionAssignmentStrategy1]).
+
+join_group_response(<<ErrorCode:16/?INT,
+		      GroupGenerationId:32/?INT,
+		      ConsumerIdSize:16/?INT,
+		      ConsumerId:ConsumerIdSize/binary,
+		      PartitionsToTopics/binary>>) ->
+  {PartitionsToTopics1, _} = parse_array(PartitionsToTopics,
+					 fun parse_topics_partitions/1),
+  #join_consumer_group_response{ error_code = brod_kafka_errors:decode(ErrorCode)
+			       , group_generation_id = GroupGenerationId
+			       , consumer_id = ConsumerId
+			       , partitions_to_own = PartitionsToTopics1
+			       }.
 
 %%%_* metadata -----------------------------------------------------------------
 metadata_request_body(#metadata_request{topics = []}) ->
@@ -379,6 +414,29 @@ parse_bytes(-1, Bin) ->
 parse_bytes(Size, Bin0) ->
   <<Bytes:Size/binary, Bin/binary>> = Bin0,
   {binary:copy(Bytes), Bin}.
+
+parse_topics_partitions(<<TopicNameSize:16/?INT, TopicName:TopicNameSize/binary,
+			  Partitions/binary>>) ->
+  {Partitions1, Bin} = parse_array(Partitions, fun parse_int32/1),
+  {{TopicName, Partitions1}, Bin}.
+
+partition_strategy(round_robin) ->
+  <<"round_robin">>;
+partition_strategy(range) ->
+  <<"range">>.
+
+kafka_timeout(Int) ->
+  <<Int:32/?INT>>.
+
+kafka_string(<<>>) ->
+  <<0:16/?INT>>;
+kafka_string(Bin) ->
+  Size = kafka_size(Bin),
+  <<Size:16/?INT, Bin/binary>>.
+
+kafka_array(Array) ->
+  Length = erlang:length(Array),
+  [<<Length:32/?INT>>, Array].
 
 %% Tests -----------------------------------------------------------------------
 -include_lib("eunit/include/eunit.hrl").

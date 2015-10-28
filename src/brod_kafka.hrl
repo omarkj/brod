@@ -32,6 +32,7 @@
 -define(API_KEY_OFFSET_COMMIT,      6).
 -define(API_KEY_OFFSET_FETCH,       7).
 -define(API_KEY_CONSUMER_METADATA, 10).
+-define(API_KEY_JOIN_GROUP,        11).
 
 %% Compression
 -define(COMPRESS_NONE, 0).

@@ -27,6 +27,7 @@
         , get_metadata/1
         , get_metadata/2
         , try_connect/1
+        , connect/1
         ]).
 
 %%%_* Includes -----------------------------------------------------------------
@@ -73,8 +74,7 @@ fetch_response_to_message_set(#fetch_response{topics = [TopicFetchData]}) ->
 connect({Host, Port}) ->
   brod_sock:start(self(), Host, Port, ?DEFAULT_CLIENT_ID, []);
 connect(#broker_metadata{host = Host, port = Port}) ->
-  try_connect({Host, Port}).
-
+  connect({Host, Port}).
 
 %%% Local Variables:
 %%% erlang-indent-level: 2
