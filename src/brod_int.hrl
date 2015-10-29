@@ -185,16 +185,6 @@
 								 [integer()]}]
 				      }).
 
--record(partition_offset, { partition  :: integer()
-			  , offset     :: integer()
-			  , metadata   :: string()
-                          , error_code :: error_code()
-			  }).
-
--record(topic_offset, { topic      :: binary()
-		      , partitions :: [#partition_offset{}]
-		      }).
-
 %%%_* heartbeat request --------------------------------------------------------
 -record(heartbeat_request, { group_id            :: string()
 			   , group_generation_id :: integer()
@@ -209,34 +199,24 @@
 			      , offsets  :: [{binary(), [integer()]}]
 			      }).
 
+-record(partition_offset, { partition  :: integer()
+			  , offset     :: integer()
+			  , metadata   :: string()
+                          , error_code :: error_code()
+			  }).
+
+-record(topic_offset, { topic      :: binary()
+		      , partitions :: [#partition_offset{}]
+		      }).
+
 %%%_* offset commit request ----------------------------------------------------
--record(offset_commit_request_v0, { consumer_group_id :: string()
-				  , topic_name        :: string()
-				  , partition         :: integer()
-				  , offset            :: integer()
-				  , metadata          :: string()
-				  }).
-
--record(offset_commit_request_v1, { consumer_group_id            :: string()
-				  , consumer_group_generation_id :: integer()
-				  , consumer_id                  :: integer()
-				  , topic_name                   :: string()
-				  , partition                    :: integer()
-				  , offset                       :: integer()
-				  , timestamp                    :: integer()
-				  , metadata                     :: string()
-				  }).
-
--record(offset_commit_request_v2, { consumer_group_id            :: string()
-				  , consumer_group_generation_id :: integer()
-				  , consumer_id                  :: integer()
-				  , retention_time               :: integer()
-				  , topic_name                   :: string()
-				  , partition                    :: integer()
-				  , offset                       :: integer()
-				  , timestamp                    :: integer()
-				  , metadata                     :: string()
-				  }).
+-record(offset_commit_request, { group_id            :: string(),
+				 group_generation_id :: integer(),
+				 consumer_id         :: integer(),
+				 retention_time      :: integer(),
+				 offsets             ::[{integer(), integer(),
+							 binary()}]
+			       }).
 
 %%%_* offset commit response ---------------------------------------------------
 -record(offset_commit_response, { topic_name :: binary()

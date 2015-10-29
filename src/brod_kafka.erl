@@ -182,7 +182,6 @@ fetch_offset(#fetch_offset_request{ group_id = GroupId
     kafka_array([[kafka_string(Topic), kafka_array([kafka_int32(Partition) ||
 						     Partition <- Partitions])]
 		 || {Topic, Partitions} <- Offsets]),
-  io:format("OffsetRequest ~p~n", [OffsetsRequests]),
   iolist_to_binary([kafka_string(GroupId), OffsetsRequests]).
 
 fetch_offset_response(Offsets) ->

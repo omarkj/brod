@@ -27,8 +27,6 @@
 -define(API_KEY_FETCH,              1).
 -define(API_KEY_OFFSET,             2).
 -define(API_KEY_METADATA,           3).
--define(API_KEY_LEADER_AND_ISR,     4).
--define(API_KEY_STOP_REPLICA,       5).
 -define(API_KEY_OFFSET_COMMIT,      8).
 -define(API_KEY_FETCH_OFFSET,       9).
 -define(API_KEY_CONSUMER_METADATA, 10).
