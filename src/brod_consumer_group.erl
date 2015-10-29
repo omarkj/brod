@@ -32,7 +32,8 @@
 % API
 -export([start/1,
 	 start_test/1,
-	 fetch_offset/2
+	 fetch_offset/2,
+	 set_offset/2
 	]).
 
 -export([consumer_group_coordinator/2]).
@@ -69,8 +70,15 @@ start_test(GroupId) ->
 			  term() when
       Topic :: binary(),
       Partition :: integer().
-fetch_offset(CG, Subscriptions) ->
-    gen_fsm:sync_send_event(CG, {fetch_offset, Subscriptions}, 5000).
+fetch_offset(CG, OffsetsFor) ->
+    gen_fsm:sync_send_event(CG, {fetch_offset, OffsetsFor}, 5000).
+
+-spec set_offset(pid(), [{Topic, [Partition]}]) ->
+			term() when
+      Topic :: binary(),
+      Partition :: {integer(), integer(), binary()}.
+set_offset(CG, SetOffsets) ->
+    gen_fsm:sync_send_event(CG, {set_offset, SetOffsets}, 5000).
 
 start(Opts) ->
     gen_fsm:start(?MODULE, [Opts], []).
@@ -118,7 +126,6 @@ joining_new(timeout, #state{group_id = GroupId,
 
 joining_new(_Event, _From, State) ->
     {reply, not_ready, joining_new, State}.
-
 
 rejoin(timeout, #state{group_id = GroupId,
 		       topics = Topics,
@@ -182,7 +189,14 @@ member(_Event, State) ->
 
 member({fetch_offset, OffsetsFor}, _From,
        #state{coordinator = Coordinator, group_id = GroupId} = State) ->
-    Res = fetch_offset_(GroupId, OffsetsFor, Coordinator),
+    Res = fetch_offset_(GroupId, Coordinator, OffsetsFor),
+    {reply, Res, member, State};
+member({set_offset, SetOffsets}, _From,
+       #state{coordinator = Coordinator,
+	      group_id = GroupId,
+	      ggi = GGI,
+	      consumer_id = ConsumerId} = State) ->
+    Res = set_offset_(GroupId, Coordinator, GGI, ConsumerId, SetOffsets),
     {reply, Res, member, State};
 member(_Event, _From, State) ->
     {next_state, member, State}.
@@ -212,6 +226,10 @@ handle_info(liveliness, member, #state{ coordinator = Coordinator,
 	    {next_state, rediscover_coordinator, State#state{
 						   liveliness_ref = undefined
 						  }, 0};
+	{error, 'UnknownConsumerId'} ->
+	    {next_state, joining_new, State#state{
+					liveliness_ref = undefined
+				       }, 0};
 	{error, {unable_to_connect, _Error}} ->
 	    {next_state, rediscover_coordinator, State#state{
 						   liveliness_ref = undefined
@@ -268,12 +286,25 @@ join_consumer_group(GroupId, Coordinator, Brokers,
 	    Error
     end.
 
-fetch_offset_(GroupId, Offsets, Coordinator) ->
+fetch_offset_(GroupId, Coordinator, Offsets) ->
     Request = #fetch_offset_request{group_id = GroupId,
 				    offsets = Offsets
 				   },
     {ok, Pid} = brod_utils:connect(Coordinator),
-    io:format("DING"),
+    case brod_sock:send_sync(Pid, Request, 10000) of
+	{ok, Res} ->
+	    Res;
+	{error, _} = Error ->
+	    Error
+    end.
+
+set_offset_(GroupId, Coordinator, GGI, ConsumerId, SetOffsets) ->
+    Request = #offset_commit_request{group_id = GroupId,
+				     group_generation_id = GGI,
+				     consumer_id = ConsumerId,
+				     offsets = SetOffsets
+				    },
+    {ok, Pid} = brod_utils:connect(Coordinator),
     case brod_sock:send_sync(Pid, Request, 10000) of
 	{ok, Res} ->
 	    Res;
@@ -295,10 +326,8 @@ send_heartbeat(Coordinator, ConsumerId, GroupId, GGI, ST) ->
     case brod_sock:send_sync(Pid, Request, 10000) of
 	{ok, #heartbeat_response{ error_code = no_error }} ->
 	    {ok, set_timer(ST)};
-	{ok, #heartbeat_response{ error_code = 'IllegalGeneration' }} ->
-	    {error, 'IllegalGeneration'};
-	{ok, Response} ->
-	    {error, Response};
+	{ok, #heartbeat_response{ error_code = ErrorCode }} ->
+	    {error, ErrorCode};
 	{error, {error, Error}} ->
 	    {error, {unable_to_connect, Error}}
     end.

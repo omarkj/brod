@@ -71,7 +71,8 @@ api_key(#fetch_request{})               -> ?API_KEY_FETCH;
 api_key(#consumer_metadata_request{})   -> ?API_KEY_CONSUMER_METADATA;
 api_key(#join_consumer_group_request{}) -> ?API_KEY_JOIN_GROUP;
 api_key(#heartbeat_request{})           -> ?API_KEY_HEARTBEAT;
-api_key(#fetch_offset_request{})        -> ?API_KEY_FETCH_OFFSET.
+api_key(#fetch_offset_request{})        -> ?API_KEY_FETCH_OFFSET;
+api_key(#offset_commit_request{})       -> ?API_KEY_OFFSET_COMMIT.
 
 decode(?API_KEY_METADATA, Bin)          -> metadata_response(Bin);
 decode(?API_KEY_PRODUCE, Bin)           -> produce_response(Bin);
@@ -80,7 +81,8 @@ decode(?API_KEY_FETCH, Bin)             -> fetch_response(Bin);
 decode(?API_KEY_CONSUMER_METADATA, Bin) -> consumer_metadata_response(Bin);
 decode(?API_KEY_JOIN_GROUP, Bin)        -> join_group_response(Bin);
 decode(?API_KEY_HEARTBEAT, Bin)         -> heartbeat_response(Bin);
-decode(?API_KEY_FETCH_OFFSET, Bin)      -> fetch_offset_response(Bin).
+decode(?API_KEY_FETCH_OFFSET, Bin)      -> fetch_offset_response(Bin);
+decode(?API_KEY_OFFSET_COMMIT, Bin)     -> offset_commit_response(Bin).
 
 is_error(X) -> brod_kafka_errors:is_error(X).
 
@@ -108,7 +110,9 @@ encode(#join_consumer_group_request{} = Request) ->
 encode(#heartbeat_request{} = Request) ->
   heartbeat(Request);
 encode(#fetch_offset_request{} = Request) ->
-  fetch_offset(Request).
+  fetch_offset(Request);
+encode(#offset_commit_request{} = Request) ->
+  offset_commit(Request).
 
 %%%_* consumer metadata --------------------------------------------------------
 consumer_metadata_body(#consumer_metadata_request{consumer_group =
@@ -331,6 +335,40 @@ parse_produce_offset(<<Partition:32/?INT,
                        , offset = Offset},
   {Res, Bin}.
 
+%%%_* offset commit request ----------------------------------------------------
+offset_commit(#offset_commit_request{group_id = GroupId,
+				     group_generation_id = GGI,
+				     consumer_id = ConsumerId,
+				     offsets = Offsets }) ->
+  OffsetsRequests =
+    kafka_array([[kafka_string(Topic),
+		  kafka_array([[kafka_int32(Partition),
+				kafka_int64(Offset),
+				kafka_string(Metadata)] ||
+				{Partition, Offset, Metadata} <- Partitions])]
+		 || {Topic, Partitions} <- Offsets]),
+  iolist_to_binary([kafka_string(GroupId),
+		    kafka_int32(GGI),
+		    kafka_string(ConsumerId),
+		    kafka_int64(100),
+		    OffsetsRequests]).
+
+offset_commit_response(Bin) ->
+  {Topics, _} = parse_array(Bin, fun parse_offset_commit/1),
+  #offset_response{topics = Topics}.
+
+parse_offset_commit(<<TopicNameSize:16/?INT,
+		      TopicName:TopicNameSize/binary,
+		      Partitions/binary>>) ->
+  {CommitedPartitions, Bin} = parse_array(Partitions,
+					  fun parse_commited_offset/1),
+  {{TopicName, CommitedPartitions}, Bin}.
+
+parse_commited_offset(<<Partition:32/?INT,
+			ErrorCode:16/?INT,
+			Bin/binary>>) ->
+  {{Partition, ErrorCode}, Bin}.
+
 %%%_* offset -------------------------------------------------------------------
 offset_request_body(#offset_request{} = Offset) ->
   Topic = Offset#offset_request.topic,
@@ -488,6 +526,9 @@ kafka_string(Bin) ->
 
 kafka_int32(Int32) ->
   <<Int32:32/?INT>>.
+
+kafka_int64(Int64) ->
+  <<Int64:64/?INT>>.
 
 kafka_array(Array) ->
   Length = erlang:length(Array),
