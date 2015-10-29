@@ -165,7 +165,7 @@ handle_msg({From, {send, Request}},
   reply(From, {ok, CorrId}),
   RequestBin = brod_kafka:encode(ClientId, CorrId, Request),
   ok = gen_tcp:send(Sock, RequestBin),
-  ApiKey = brod_kafka:api_key(Request),
+    ApiKey = brod_kafka:api_key(Request),
   ApiKeys = dict:store(CorrId, ApiKey, State#state.api_keys),
   ?MODULE:loop(State#state{corr_id = CorrId, api_keys = ApiKeys}, Debug);
 handle_msg({From, get_tcp_sock}, State, Debug) ->

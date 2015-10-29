@@ -1,11 +1,5 @@
 -module(brod_consumer_group).
-
 -behaviour(gen_fsm).
-
-%% This is WIP for consumer groups for Brod. It's designed agains the upcoming
-%% 0.9.0 API. It is process heavy and should be refactored in the future to
-%% be a single process managing a number of consumer sockets, instead of the
-%% current design of a single process managing a number of consumer processes
 
 % gen_fsm callbacks
 -export([init/1,
@@ -51,6 +45,7 @@
 		 brokers :: [#broker_metadata{}],
 		 psa :: atom(),
 		 coordinator         :: #broker_metadata{},
+		 socket :: drob_socket:socket(),
 		 ggi :: integer(),
 		 consumer_id         :: string(),
 		 consumers           :: [{pid(), {binary(), integer()}}],
@@ -113,15 +108,18 @@ joining_new(timeout, #state{group_id = GroupId,
 	       consumer_id := ConsumerId,
 	       pto := PTO,
 	       brokers := Brokers1,
+	       coordinator_socket := CoordinatorSocket,
 	       coordinator := Coordinator}} ->
 	    Consumers = start_consumers(PTO, Brokers1),
 	    Ref = set_timer(SessionTimeout),
-	    {next_state, member, State#state{consumers = Consumers,
-					     brokers = Brokers1,
-					     liveliness_ref = Ref,
-					     coordinator = Coordinator,
-					     ggi = GGI,
-					     consumer_id = ConsumerId}}
+	    {next_state, member,
+	     State#state{consumers = Consumers,
+			 brokers = Brokers1,
+			 liveliness_ref = Ref,
+			 coordinator = Coordinator,
+			 socket = CoordinatorSocket,
+			 ggi = GGI,
+			 consumer_id = ConsumerId}}
     end.
 
 joining_new(_Event, _From, State) ->
@@ -147,18 +145,21 @@ rejoin(timeout, #state{group_id = GroupId,
 	       consumer_id := ConsumerId1,
 	       pto := PTO,
 	       brokers := Brokers1,
+	       coordinator_socket := CoordinatorSocket,
 	       coordinator := Coordinator}} ->
 	    Consumers = start_consumers(PTO, Brokers1),
 	    Ref = set_timer(SessionTimeout),
-	    {next_state, member, State#state{consumers = Consumers,
-					     brokers = Brokers1,
-					     liveliness_ref = Ref,
-					     coordinator = Coordinator,
-					     ggi = GGI,
-					     consumer_id = ConsumerId1}}
+	    {next_state, member,
+	     State#state{consumers = Consumers,
+			 brokers = Brokers1,
+			 liveliness_ref = Ref,
+			 coordinator = Coordinator,
+			 socket = CoordinatorSocket,
+			 ggi = GGI,
+			 consumer_id = ConsumerId1}}
     end.
 
-rejoin(_Event, _From, State) ->    
+rejoin(_Event, _From, State) ->
     {reply, not_ready, State}.
 
 illegal_generation(timeout, #state{consumers=Consumers}=State) ->
@@ -188,15 +189,15 @@ member(_Event, State) ->
     {next_state, State}.
 
 member({fetch_offset, OffsetsFor}, _From,
-       #state{coordinator = Coordinator, group_id = GroupId} = State) ->
-    Res = fetch_offset_(GroupId, Coordinator, OffsetsFor),
+       #state{socket = Socket, group_id = GroupId} = State) ->
+    Res = fetch_offset_(GroupId, Socket, OffsetsFor),
     {reply, Res, member, State};
 member({set_offset, SetOffsets}, _From,
-       #state{coordinator = Coordinator,
+       #state{socket = Socket,
 	      group_id = GroupId,
 	      ggi = GGI,
 	      consumer_id = ConsumerId} = State) ->
-    Res = set_offset_(GroupId, Coordinator, GGI, ConsumerId, SetOffsets),
+    Res = set_offset_(GroupId, Socket, GGI, ConsumerId, SetOffsets),
     {reply, Res, member, State};
 member(_Event, _From, State) ->
     {next_state, member, State}.
@@ -207,13 +208,13 @@ handle_event(_Event, StateName, State) ->
 handle_sync_event(_Event, _From, StateName, State) ->
     {next_state, StateName, State}.
 
-handle_info(liveliness, member, #state{ coordinator = Coordinator,
+handle_info(liveliness, member, #state{ socket = Socket,
 					group_id = GroupId,
 					consumer_id = ConsumerId,
 					ggi = GGI,
 					session_timeout = ST} = State) ->
     %% Member needs to heartbeat to keep the connection alive
-    case send_heartbeat(Coordinator, ConsumerId, GroupId, GGI, ST) of
+    case send_heartbeat(Socket, ConsumerId, GroupId, GGI, ST) of
 	{ok, TimerRef} ->
 	    {next_state, member, State#state{
 				   liveliness_ref = TimerRef
@@ -230,7 +231,7 @@ handle_info(liveliness, member, #state{ coordinator = Coordinator,
 	    {next_state, joining_new, State#state{
 					liveliness_ref = undefined
 				       }, 0};
-	{error, {unable_to_connect, _Error}} ->
+	{error, _Error} ->
 	    {next_state, rediscover_coordinator, State#state{
 						   liveliness_ref = undefined
 						  }, 0}
@@ -266,46 +267,44 @@ join_consumer_group(GroupId, Coordinator, Brokers,
 					  , partition_assignment_strategy = 
 						PSA},
     {ok, Pid} = brod_utils:connect(Coordinator),
-    case brod_sock:send_sync(Pid, Request, 10000) of
+    case drob_socket:send_sync(Request, Pid) of
 	{ok,
 	 #join_consumer_group_response{error_code = no_error,
 				       group_generation_id = GGI,
 				       consumer_id = ConsumerId1,
 				       partitions_to_own = PTO}} ->
-	    ok = brod_sock:stop(Pid),
 	    {ok, #{ggi => GGI,
 		   consumer_id => ConsumerId1,
 		   pto => PTO,
 		   brokers => Brokers,
+		   coordinator_socket => Pid,
 		   coordinator => Coordinator}};
 	{ok, #join_consumer_group_response{error_code = ErrorCode}} ->
-	    ok = brod_sock:stop(Pid),
+	    ok = drob_socket:close(Pid),
 	    {error, ErrorCode};
 	{error, _} = Error ->
-	    ok = brod_sock:stop(Pid),
+	    ok = drob_socket:close(Pid),
 	    Error
     end.
 
-fetch_offset_(GroupId, Coordinator, Offsets) ->
+fetch_offset_(GroupId, Socket, Offsets) ->
     Request = #fetch_offset_request{group_id = GroupId,
 				    offsets = Offsets
 				   },
-    {ok, Pid} = brod_utils:connect(Coordinator),
-    case brod_sock:send_sync(Pid, Request, 10000) of
+    case drob_socket:send_sync(Request, Socket) of
 	{ok, Res} ->
 	    Res;
 	{error, _} = Error ->
 	    Error
     end.
 
-set_offset_(GroupId, Coordinator, GGI, ConsumerId, SetOffsets) ->
+set_offset_(GroupId, Socket, GGI, ConsumerId, SetOffsets) ->
     Request = #offset_commit_request{group_id = GroupId,
 				     group_generation_id = GGI,
 				     consumer_id = ConsumerId,
 				     offsets = SetOffsets
 				    },
-    {ok, Pid} = brod_utils:connect(Coordinator),
-    case brod_sock:send_sync(Pid, Request, 10000) of
+    case drob_socket:send_sync(Request, Socket) of
 	{ok, Res} ->
 	    Res;
 	{error, _} = Error ->
@@ -322,14 +321,13 @@ send_heartbeat(Coordinator, ConsumerId, GroupId, GGI, ST) ->
     Request = #heartbeat_request{ group_id = GroupId,
 				  group_generation_id = GGI,
 				  consumer_id = ConsumerId },
-    {ok, Pid} = brod_utils:connect(Coordinator),
-    case brod_sock:send_sync(Pid, Request, 10000) of
+    case drob_socket:send_sync(Request, Coordinator) of
 	{ok, #heartbeat_response{ error_code = no_error }} ->
 	    {ok, set_timer(ST)};
 	{ok, #heartbeat_response{ error_code = ErrorCode }} ->
 	    {error, ErrorCode};
-	{error, {error, Error}} ->
-	    {error, {unable_to_connect, Error}}
+	{error, Error} = Error ->
+	    Error
     end.
 
 set_timer(Timeout) ->
@@ -370,11 +368,11 @@ consumer_group_coordinator(_GroupName, _Brokers, 0) ->
 consumer_group_coordinator(GroupName, Brokers, Retries) ->
     Request = #consumer_metadata_request{ consumer_group = GroupName },
     {ok, Pid} = brod_utils:try_connect(Brokers),
-    case brod_sock:send_sync(Pid, Request, 10000) of
+    case drob_socket:send_sync(Request, Pid) of
 	{ok, #consumer_metadata_response{coordinator = Coordinator }} ->
-	    ok = brod_sock:stop(Pid),
+	    ok = drob_socket:close(Pid),
 	    {ok, Coordinator};
 	{error, timeout} ->
-	    ok = brod_sock:stop(Pid),
+	    ok = drob_socket:close(Pid),
 	    consumer_group_coordinator(GroupName, Brokers, Retries - 1)
     end.

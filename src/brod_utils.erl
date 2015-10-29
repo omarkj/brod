@@ -41,8 +41,8 @@ get_metadata(Hosts) ->
 get_metadata(Hosts, Topics) ->
   {ok, Pid} = try_connect(Hosts),
   Request = #metadata_request{topics = Topics},
-  Response = brod_sock:send_sync(Pid, Request, 10000),
-  ok = brod_sock:stop(Pid),
+  Response = drob_socket:send_sync(Request, Pid),
+  drob_socket:close(Pid),
   Response.
 
 try_connect(Hosts) ->
@@ -72,7 +72,7 @@ fetch_response_to_message_set(#fetch_response{topics = [TopicFetchData]}) ->
 -spec try_connect({string(), integer()} | #broker_metadata{}) ->
 		     {ok, pid()} | {error, term()}.
 connect({Host, Port}) ->
-  brod_sock:start(self(), Host, Port, ?DEFAULT_CLIENT_ID, []);
+  drob_socket:connect(Host, Port, ?DEFAULT_CLIENT_ID);
 connect(#broker_metadata{host = Host, port = Port}) ->
   connect({Host, Port}).
 
