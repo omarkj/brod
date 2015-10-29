@@ -185,6 +185,16 @@
 								 [integer()]}]
 				      }).
 
+-record(partition_offset, { partition  :: integer()
+			  , offset     :: integer()
+			  , metadata   :: string()
+                          , error_code :: error_code()
+			  }).
+
+-record(topic_offset, { topic      :: binary()
+		      , partitions :: [#partition_offset{}]
+		      }).
+
 %%%_* heartbeat request --------------------------------------------------------
 -record(heartbeat_request, { group_id            :: string()
 			   , group_generation_id :: integer()
@@ -193,6 +203,11 @@
 
 %%%_* heartbeat response -------------------------------------------------------
 -record(heartbeat_response, { error_code :: integer() }).
+
+%%%_* fetch offset request -----------------------------------------------------
+-record(fetch_offset_request, { group_id :: string()
+			      , offsets  :: [{binary(), [integer()]}]
+			      }).
 
 %%%_* offset commit request ----------------------------------------------------
 -record(offset_commit_request_v0, { consumer_group_id :: string()

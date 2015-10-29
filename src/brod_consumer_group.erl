@@ -32,7 +32,8 @@
 % API
 -export([start/1,
 	 start_test/1,
-	 commit_offset]).
+	 fetch_offset/2
+	]).
 
 -export([consumer_group_coordinator/2]).
 
@@ -63,7 +64,14 @@ start_test(GroupId) ->
 	     group_id => GroupId,
 	     session_timeout => 30000,
 	     partition_assignment_strategy => range}).
-    
+
+-spec fetch_offset(pid(), [{Topic, [Partition]}]) ->
+			  term() when
+      Topic :: binary(),
+      Partition :: integer().
+fetch_offset(CG, Subscriptions) ->
+    gen_fsm:sync_send_event(CG, {fetch_offset, Subscriptions}, 5000).
+
 start(Opts) ->
     gen_fsm:start(?MODULE, [Opts], []).
 
@@ -172,6 +180,10 @@ rediscover_coordinator(_Event, _From, State) ->
 member(_Event, State) ->
     {next_state, State}.
 
+member({fetch_offset, OffsetsFor}, _From,
+       #state{coordinator = Coordinator, group_id = GroupId} = State) ->
+    Res = fetch_offset_(GroupId, OffsetsFor, Coordinator),
+    {reply, Res, member, State};
 member(_Event, _From, State) ->
     {next_state, member, State}.
 
@@ -253,6 +265,19 @@ join_consumer_group(GroupId, Coordinator, Brokers,
 	    {error, ErrorCode};
 	{error, _} = Error ->
 	    ok = brod_sock:stop(Pid),
+	    Error
+    end.
+
+fetch_offset_(GroupId, Offsets, Coordinator) ->
+    Request = #fetch_offset_request{group_id = GroupId,
+				    offsets = Offsets
+				   },
+    {ok, Pid} = brod_utils:connect(Coordinator),
+    io:format("DING"),
+    case brod_sock:send_sync(Pid, Request, 10000) of
+	{ok, Res} ->
+	    Res;
+	{error, _} = Error ->
 	    Error
     end.
 

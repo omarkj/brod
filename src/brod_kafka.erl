@@ -70,7 +70,8 @@ api_key(#offset_request{})              -> ?API_KEY_OFFSET;
 api_key(#fetch_request{})               -> ?API_KEY_FETCH;
 api_key(#consumer_metadata_request{})   -> ?API_KEY_CONSUMER_METADATA;
 api_key(#join_consumer_group_request{}) -> ?API_KEY_JOIN_GROUP;
-api_key(#heartbeat_request{})           -> ?API_KEY_HEARTBEAT.
+api_key(#heartbeat_request{})           -> ?API_KEY_HEARTBEAT;
+api_key(#fetch_offset_request{})        -> ?API_KEY_FETCH_OFFSET.
 
 decode(?API_KEY_METADATA, Bin)          -> metadata_response(Bin);
 decode(?API_KEY_PRODUCE, Bin)           -> produce_response(Bin);
@@ -78,7 +79,8 @@ decode(?API_KEY_OFFSET, Bin)            -> offset_response(Bin);
 decode(?API_KEY_FETCH, Bin)             -> fetch_response(Bin);
 decode(?API_KEY_CONSUMER_METADATA, Bin) -> consumer_metadata_response(Bin);
 decode(?API_KEY_JOIN_GROUP, Bin)        -> join_group_response(Bin);
-decode(?API_KEY_HEARTBEAT, Bin)         -> heartbeat_response(Bin).
+decode(?API_KEY_HEARTBEAT, Bin)         -> heartbeat_response(Bin);
+decode(?API_KEY_FETCH_OFFSET, Bin)      -> fetch_offset_response(Bin).
 
 is_error(X) -> brod_kafka_errors:is_error(X).
 
@@ -104,13 +106,14 @@ encode(#consumer_metadata_request{} = Request) ->
 encode(#join_consumer_group_request{} = Request) ->
   join_consumer_group(Request);
 encode(#heartbeat_request{} = Request) ->
-  heartbeat(Request).
+  heartbeat(Request);
+encode(#fetch_offset_request{} = Request) ->
+  fetch_offset(Request).
 
 %%%_* consumer metadata --------------------------------------------------------
 consumer_metadata_body(#consumer_metadata_request{consumer_group =
 						    ConsumerGroup}) ->
-  Size = kafka_size(ConsumerGroup),
-  <<Size:16/?INT, ConsumerGroup/binary>>.
+  kafka_string(ConsumerGroup).
 
 -spec consumer_metadata_response(binary()) -> #consumer_metadata_response{}.
 consumer_metadata_response(<<ErrorCode:16/?INT,
@@ -166,6 +169,40 @@ heartbeat(#heartbeat_request{ group_id            = GroupId
 
 heartbeat_response(<<ErrorCode:16/?INT>>) ->
   #heartbeat_response{ error_code = brod_kafka_errors:decode(ErrorCode) }.
+
+%%%_* fetch offset -------------------------------------------------------------
+fetch_offset(#fetch_offset_request{ group_id = GroupId
+				  , offsets  = Offsets
+				  }) ->
+  OffsetsRequests =
+    kafka_array([[kafka_string(Topic), kafka_array([kafka_int32(Partition) ||
+						     Partition <- Partitions])]
+		 || {Topic, Partitions} <- Offsets]),
+  io:format("OffsetRequest ~p~n", [OffsetsRequests]),
+  iolist_to_binary([kafka_string(GroupId), OffsetsRequests]).
+
+fetch_offset_response(Offsets) ->
+  {Offsets1, _} = parse_array(Offsets, fun parse_offsets/1),
+  Offsets1.
+
+parse_offsets(<<TopicNameSize:16/?INT,
+		TopicName:TopicNameSize/binary,
+		PartitionsOffset/binary>>)->
+  {PartitionsOffset1, Bin} = parse_array(PartitionsOffset,
+					 fun parse_partition_offset/1),
+  {#topic_offset{ topic = TopicName
+		, partitions = PartitionsOffset1}, Bin}.
+
+parse_partition_offset(<<Partition:32/?INT,
+			 Offset:64/?INT,
+			 MetadataSize:16/?INT,
+			 Metadata:MetadataSize/binary,
+			 ErrorCode:16/?INT,
+			 Bin/binary>>) ->
+  {#partition_offset{ partition  = Partition
+		    , offset     = Offset
+		    , metadata   = Metadata
+		    , error_code = ErrorCode}, Bin}.
 
 %%%_* metadata -----------------------------------------------------------------
 metadata_request_body(#metadata_request{topics = []}) ->
